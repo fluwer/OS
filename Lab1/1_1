@@ -1,0 +1,398 @@
+//Первая часть
+
+#include <windows.h>
+#include <iostream>
+#include <map>
+#include <string> 
+
+using namespace std;
+
+
+//Вывод логических дисков
+
+void getDrives() {
+    cout << "Volumes: " << endl;
+    DWORD dir = GetLogicalDrives();
+    /*
+    Каждый установленный бит возвращаемого значения соответствует существующему в системе
+    логическому устройству. Например, если в системе существуют диски A:, C: и D:, то
+    возвращаемое функцией значение равно 13(десятичное).
+    */
+    for (int i = 0; i < 32; i++)
+        if (((dir >> i) & 1) == 1)
+            cout << "  " << char('A' + i) << endl;
+}
+
+//Создание директории
+void mkDir(const wchar_t path[] = L"C:\\new_folder") {
+    if (CreateDirectory(path, NULL)) wcout << path << L" directory created" << endl;
+    else cout << "error create directory" << endl;
+}
+
+//Удаление директории
+void rmDir(const wchar_t path[] = L"D:\\new_folder") {
+    if (RemoveDirectory(path)) wcout << path << L" directory removed" << endl;
+    else cout << "error remove directory" << endl;
+}
+
+//Флаги
+string getFileSystemFlags(unsigned long flags){
+    string res;
+    map <unsigned long, string> SystemFlagsMap = { 
+                                {FILE_CASE_PRESERVED_NAMES, "CASE IS PRESERVED"},
+                                {FILE_CASE_SENSITIVE_SEARCH, "CASE-SENSETIVE SUPPORT "},
+                                {FILE_DAX_VOLUME, "DIRECT ACCESS VOLUME"},
+                                {FILE_FILE_COMPRESSION, "FILE-BASED COMPRESSION SUPPORT"},
+                                {FILE_NAMED_STREAMS, "SUPPORTS NAMED STREAMS"},
+                                {FILE_PERSISTENT_ACLS, "PRESERVES AND ENDFORCES ACLS"},
+                                {FILE_READ_ONLY_VOLUME, "READ ONLY"},
+                                {FILE_SEQUENTIAL_WRITE_ONCE, "SEQUENTIAL WRITE ONCE"},
+                                {FILE_SUPPORTS_ENCRYPTION, "SUPPORTS ENCRYPTION"},
+                                {FILE_SUPPORTS_EXTENDED_ATTRIBUTES, "SUPPORTS EXTENDED ATTRIBUTES"},
+                                {FILE_SUPPORTS_HARD_LINKS, "SUPPORTS HARD LINKS"},
+                                {FILE_SUPPORTS_OBJECT_IDS, "SUPPORTS OBJECT IDS"},
+                                {FILE_SUPPORTS_OPEN_BY_FILE_ID, "SUPPORTS OPEN BY FILE ID"},
+                                {FILE_SUPPORTS_REPARSE_POINTS, "SUPPORTS REPARSE POINTS"},
+                                {FILE_SUPPORTS_SPARSE_FILES, "SUPPORTS SPARSE FILES"},
+                                {FILE_SUPPORTS_TRANSACTIONS, "SUPPORTS TRANSACTIONS"},
+                                {FILE_SUPPORTS_USN_JOURNAL, "SUPPORTS USN JOURNAL"},
+                                {FILE_UNICODE_ON_DISK, "SUPPORTS UNICODE IN FILE NAME"},
+                                {FILE_VOLUME_IS_COMPRESSED, "VOLUME IS COMPRESSED"},
+                                {FILE_VOLUME_QUOTAS, "SUPPORTS DISK QUOTAS"},
+                                {FILE_SUPPORTS_BLOCK_REFCOUNTING, "SUPPORTS BLOCK REFCOUNTING"} };
+
+    for (const auto& a : SystemFlagsMap)
+        if (flags & a.first) {
+            res += "\t" + a.second + "\n";
+            flags &= ~a.first;
+        }
+
+    return res;
+}
+
+string getDriveTypeName(unsigned long type){
+    map <unsigned long, string> driveTypes = { 
+                            {DRIVE_UNKNOWN, "Unknown"},
+                            {DRIVE_NO_ROOT_DIR	, "No such Drive"},
+                            {DRIVE_REMOVABLE	, "Removable Drive"},
+                            {DRIVE_FIXED	, "Hard Drive"},
+                            {DRIVE_REMOTE	, "Remote Drive"},
+                            {DRIVE_CDROM	, "CD ROM"},
+                            {DRIVE_RAMDISK	, "RAM"} };
+
+    return driveTypes[type];
+}
+
+//Информация о диске
+void getDriveInfo(const wchar_t drive[] = L"C:\\") {
+    wcout << L"-- Volume: \"" << drive << "\" --" << endl;
+
+    cout << "Drive Type: " << getDriveTypeName(GetDriveType(drive)) << endl;
+    /*
+    UINT GetDriveType( LPTSTR lpszRootPathName )
+    В качестве параметра ей передается имя корневого каталога (напр. A:\), а возвращаемое
+    значение имеет следующие значения:
+    Идентификатор Описание
+    0 Тип устройства определить нельзя
+    1 Корневой каталог не существует
+    DRIVE_REMOVABLE Гибкий диск
+    DRIVE_FIXED Жесткий диск
+    DRIVE_REMOTE Сетевой диск
+    DRIVE_CDROM Компакт диск
+    DRIVE_RAMDISK RAM диск
+    */
+
+    wchar_t NameBuffer[MAX_PATH];
+    wchar_t SysNameBuffer[MAX_PATH];
+    DWORD VSNumber;
+    DWORD MCLength;
+    DWORD FileSF;
+
+    if (GetVolumeInformation(drive, NameBuffer, MAX_PATH, &VSNumber, &MCLength, &FileSF, SysNameBuffer, MAX_PATH)){
+        wcout << "Name Buffer: " << NameBuffer << endl;
+        wcout << "Volume Serial Number: " << VSNumber << endl;
+        wcout << "Volume Size: " << MCLength << endl;
+        cout << "File System Flags:\n" << getFileSystemFlags(FileSF);
+        wcout << "File System Name: " << SysNameBuffer << endl;
+    }
+    /*
+    заполняет параметры информацией об
+    имени тома, названии файловой структуры, максимальной длине имени
+    файла, дополнительных атрибутах тома, специфических для файловой
+    структуры.
+
+    */
+
+    DWORD sectorsPerCluster;
+    DWORD bytesPerSector;
+    DWORD numberOfFreeClusters;
+    DWORD totalNumberOfClusters;
+
+    if (GetDiskFreeSpace(drive, &sectorsPerCluster, &bytesPerSector, &numberOfFreeClusters, &totalNumberOfClusters)){
+        wcout << "Sectors Per Cluster: " << sectorsPerCluster << endl;
+        wcout << "Bytes Per Sector: " << bytesPerSector << endl;
+        wcout << "Number Of Free Clusters: " << numberOfFreeClusters << endl;
+        wcout << "Total Number Of Clusters: " << totalNumberOfClusters << endl;
+    }
+    /*
+     сообщает информацию о размерах сектора и
+    кластера и о наличии свободных кластеров
+    */
+}
+
+//Создать файл
+void mkFile(const wchar_t path[] = L"D:\\new_file.txt") {
+    wcout << L"Creating new File \"" << path << L"\": ";
+    HANDLE hFile = CreateFile(path, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_NEW, 0, NULL);
+    if (hFile != INVALID_HANDLE_VALUE) cout << "Success!" << endl;
+    else cout << "Error!" << endl;
+    CloseHandle(hFile);
+}
+
+//Копировать файл
+void cp(const wchar_t file[] = L"D:\\new_file.txt", const wchar_t to[] = L"D:\\Music\\new_file_copy.txt") {
+    wcout << L"Copying File \"" << file << L"\" to \"" << to << "\": ";
+    if (CopyFile(file, to, true)) cout << "file copied" << endl;
+    else cout << "file not copied" << endl;
+}
+
+//Переместить файл
+void mv(const wchar_t from[] = L"D:\\new_file.txt", const wchar_t to[] = L"D:\\Music\\new_file_moved.txt") {
+    wcout << L"Moving File \"" << from << L"\" to \"" << to << "\": ";
+    if (MoveFile(from, to)) cout << "file moved" << endl;
+    else cout << "file not moved" << endl;
+}
+
+void mvEx(const wchar_t from[] = L"D:\\new_file.txt", const wchar_t to[] = L"D:\\Music\\new_file_movedEx.txt") {
+    int move_choice;
+
+    //wcout << L"Moving File \"" << from << L"\" to \"" << to << "\": ";
+    //if (MoveFileEx(from, to, MOVEFILE_COPY_ALLOWED)) cout << "file moved" << endl;
+   // else cout << "file not moved" << endl;
+
+    if (MoveFileEx(from, to, '\0')) cout << "File moved" << endl;
+    else if (GetLastError() == 183) {
+        cout << "File exists. Replace it?" << endl; 
+        cout << "1 - Yes" << endl;
+        cout << "0 - No" << endl;
+
+        cin >> move_choice; 
+        system("cls");
+
+        if (move_choice)
+            if (MoveFileEx(from, to, MOVEFILE_REPLACE_EXISTING))
+                cout << "File moved" << endl;
+            else
+                cout << "Code error: " << GetLastError() << endl;
+    }
+    else
+        cout << "Code error: " << GetLastError() << endl;
+
+}
+
+
+string getFileAttributes(unsigned long fileAttributes){
+    string res;
+    map <unsigned long, string> attributesMap = { 
+                                {FILE_ATTRIBUTE_ARCHIVE, "Archive"},
+                                {FILE_ATTRIBUTE_DIRECTORY, "Directory"},
+                                {FILE_ATTRIBUTE_READONLY, "Read-Only"},
+                                {FILE_ATTRIBUTE_HIDDEN, "Hidden"},
+                                {FILE_ATTRIBUTE_SYSTEM, "System"},
+                                {FILE_ATTRIBUTE_NORMAL, "Normal"},
+                                {FILE_ATTRIBUTE_TEMPORARY, "Temporary"},
+                                {FILE_ATTRIBUTE_COMPRESSED, "Compressed"} };
+
+    for (const auto& a : attributesMap)
+        if (fileAttributes & a.first) {
+            res += a.second + "\n";
+            fileAttributes &= ~a.first;
+        }
+
+    if (fileAttributes) 
+        res += "Additional Attributes: " + to_string(fileAttributes);
+
+    return res;
+}
+
+//Аттрибуты файла
+void lsattr(const wchar_t path[] = L"C:\\ProgramData") {
+    wcout << L"Attributes of \"" << path << "\":\n";
+    unsigned long dwAttrs = GetFileAttributes(path);
+
+    if (dwAttrs == INVALID_FILE_ATTRIBUTES) 
+        cout << "Invalid file!" << endl;
+    else 
+        cout << getFileAttributes(dwAttrs) << endl;
+}
+
+//Установить аттрибут файла "READONLY"
+void setattr(const wchar_t path[] = L"D:\\new_file.txt", DWORD attr = FILE_ATTRIBUTE_READONLY) {
+    wcout << L"Setting attribute \"" << attr << "\" for \"" << path << "\": ";
+
+    if (SetFileAttributes(path, attr)) 
+        cout << "Success!" << endl;
+    else 
+        cout << "Error!" << endl;
+
+}
+
+//Информация о файле
+void getInfo(const wchar_t path[] = L"D:\\new_file.txt") {
+    wcout << L"Information for \"" << path << "\":\n";
+    FILE_STANDARD_INFO standardInfo;
+    BY_HANDLE_FILE_INFORMATION lpFileInformation;
+    HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_ARCHIVE, 0);
+    if (GetFileInformationByHandle(hFile, &lpFileInformation)) 
+        printf("File size: %d\r\nHANDLE: %d \n", lpFileInformation.nFileIndexLow, hFile);
+    else 
+        printf("Error!");
+
+    CloseHandle(hFile);
+}
+
+//Когда был создан файл
+void getFileTime(const wchar_t path[] = L"D:\\new_file.txt") {
+    wcout << L"File time for \"" << path << "\":\n";
+    FILETIME ftCreate;
+    SYSTEMTIME stUTC, stLocal;
+    HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    if (hFile == INVALID_HANDLE_VALUE) 
+        printf("Could not open file, error %ul\n", GetLastError());
+    else if (!GetFileTime(hFile, &ftCreate, NULL, NULL)) 
+        printf("Something wrong!\n");
+    else {
+        FileTimeToSystemTime(&ftCreate, &stUTC);
+        printf("Created on: %02d/%02d/%d %02d:%02d\n", stUTC.wDay, stUTC.wMonth, stUTC.wYear, stUTC.wHour, stUTC.wMinute);
+    }
+
+    CloseHandle(hFile);
+}
+
+//Установить последнее изменение файла в текущее время
+void setFileTimeToCurrent(const wchar_t path[] = L"D:\\new_file.txt") {
+    wcout << L"Setting file time to current for \"" << path << "\": ";
+    FILETIME ft;
+    SYSTEMTIME st;
+    HANDLE hFile = CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    //исправить закрытие
+    GetSystemTime(&st);
+    SystemTimeToFileTime(&st, &ft);
+    if (SetFileTime(hFile, (LPFILETIME)NULL, (LPFILETIME)NULL, &ft))
+        cout << "Success!" << endl;
+    else
+        cout << "Error!" << endl;
+
+    CloseHandle(hFile);
+}
+
+int main() {
+    int option;
+    wchar_t path1[100];
+    wchar_t path2[100];
+
+    do {
+        cout << "1.Get drives list\n2.Get drive info\n3.Create directory\n";
+        cout << "4.Remove directory\n5.Make file\n6.Copy file";
+        cout << "\n7.Move file\n8.MoveEx file\n9.Get file attributes\n";
+        cout << "10.Set file attribute READONLY\n11.Get file information\n12.Get file time\n";
+        cout << "13.Set file time to current\n---\n0.EXIT\n\nChoose option: ";
+        cin >> option;
+        system("CLS");
+
+        switch (option){
+        case 1:
+            cout << "-- Get drives list --\n\n";
+            getDrives();
+            break;
+        case 2:
+            cout << "-- Get drive info --\n\n";
+            getDrives();
+            cout << "\nEnter volume name: ";
+            wcin >> path1; wcscat_s(path1, L":\\");
+            getDriveInfo(path1);
+            break;
+        case 3:
+            cout << "-- Create directory --\n\n";
+            cout << "\nEnter path with directory name: ";
+            wcin >> path1;
+            mkDir(path1);
+            break;
+        case 4:
+            cout << "-- Remove directory --\n\n";
+            cout << "\nEnter path with directory name: ";
+            wcin >> path1;
+            rmDir(path1);
+            break;
+        case 5:
+            cout << "-- Make file --\n\n";
+            cout << "\nEnter path with file name: ";
+            wcin >> path1;
+            mkFile(path1);
+            break;
+        case 6:
+            cout << "-- Copy file --\n\n";
+            cout << "\nEnter path with file name FOR COPY: ";
+            wcin >> path1;
+            cout << "\nEnter path with file name WHERE TO COPY: ";
+            wcin >> path2;
+            cp(path1, path2);
+            break;
+        case 7:
+            cout << "-- Move file --\n\n";
+            cout << "\nEnter path with file name FOR MOVE: ";
+            wcin >> path1;
+            cout << "\nEnter path with file name WHERE TO MOVE: ";
+            wcin >> path2;
+            mv(path1, path2);
+            break;
+        case 8:
+            cout << "-- MoveEx file --\n\n";
+            cout << "\nEnter path with file name FOR MOVEEX: ";
+            wcin >> path1;
+            cout << "\nEnter path with file name WHERE TO MOVEEX: ";
+            wcin >> path2;
+            mvEx(path1, path2);
+            break;
+        case 9:
+            cout << "-- Get file attributes --\n\n";
+            cout << "\nEnter path with file name: ";
+            wcin >> path1;
+            lsattr(path1);
+            break;
+        case 10:
+            cout << "-- Set file attribute READONLY --\n\n";
+            cout << "\nEnter path with file name: ";
+            wcin >> path1;
+            setattr(path1);
+            system("pause");
+            break;
+        case 11:
+            cout << "-- Get file information --\n\n";
+            cout << "\nEnter path with file name: ";
+            wcin >> path1;
+            getInfo(path1);
+            break;
+        case 12:
+            cout << "-- Get file time --\n\n";
+            cout << "\nEnter path with file name: ";
+            wcin >> path1;
+            getFileTime(path1);
+            break;
+        case 13:
+            cout << "-- Set file time to current --\n\n";
+            cout << "\nEnter path with file name: ";
+            wcin >> path1;
+            setFileTimeToCurrent(path1);
+            break;
+        }
+        cout << "\nPress anything...";
+
+        getchar();
+        getchar();
+        system("CLS");
+    } while (option != 0);
+
+    return 0;
+}
