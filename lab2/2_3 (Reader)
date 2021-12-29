@@ -1,0 +1,49 @@
+#include <windows.h>
+#include <stdio.h>
+#include <conio.h>
+#include <iostream>
+
+#define BUF_SIZE 256
+
+using namespace std;
+
+void main() {
+    cout << "  - - READER - -\n" << endl;
+
+    HANDLE hMapFile;
+    LPCTSTR pBuf;
+
+    TCHAR szName[] = TEXT("MyFileMappingObject");
+
+    hMapFile = OpenFileMapping(
+        FILE_MAP_ALL_ACCESS,   // доступ к чтению/записи
+        FALSE,                 // имя не наследуется
+        szName);               // имя "проецируемого " объекта 
+
+    if (hMapFile == NULL) {
+        printf("  Unable to open projection file object! (%d).\n", GetLastError());
+        return;
+    }
+    else {
+        wcout << "  Name Of Process: " << szName << endl;
+        wcout << "  Buffer Size: " << BUF_SIZE << endl;
+    }
+
+    pBuf = (TCHAR*)MapViewOfFile(hMapFile,    // дескриптор "проецируемого" объекта
+        FILE_MAP_ALL_ACCESS,  // разрешение чтения/записи
+        0,
+        0,
+        BUF_SIZE);
+
+    if (pBuf == NULL) {
+        printf("  The projected file cannot be displayed! (%d).\n",
+            GetLastError());
+        return;
+    }
+    else
+        wcout << "\n  Text of "<<szName<<": "<< pBuf;
+
+    //MessageBox(NULL, pBuf, TEXT("Process2"), MB_OK);
+    UnmapViewOfFile(pBuf); //отменяем отображение  представления файла из адресного пространства вызывающего процесса
+    CloseHandle(hMapFile);
+}
