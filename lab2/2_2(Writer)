@@ -1,0 +1,86 @@
+#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <conio.h>
+#include <tchar.h>
+#include <iostream>
+
+#define BUF_SIZE 256
+#define COPY_SIZE 512
+
+using namespace std;
+
+void MyCopyMemory(TCHAR* buf, TCHAR* pbData, SIZE_T cbData, SIZE_T bufsize){
+    CopyMemory(buf, pbData, min(cbData, bufsize)); //копирует блок памяти из одного места в другой с использованием указателей
+    /*
+    Destination - Указатель на адрес памяти для использования
+    Source - Указатель на адрес памяти из которого будут копироваться данные
+    Length - Число копируемых байтов
+    */
+}
+
+int main() {
+    cout << "  - - WRITER - -\n" << endl;
+
+    HANDLE hMapFile;
+    TCHAR* pBuf;
+
+    TCHAR szName[BUF_SIZE] = TEXT("MyFileMappingObject"); 
+    wcout << "  Name Of Process: " << szName <<endl;
+    wcout << "  Buffer Size: " << BUF_SIZE << endl;
+    wcout << "  Copy Size: " << COPY_SIZE << endl;
+     
+    TCHAR szMsg[BUF_SIZE] = TEXT("EEEE");
+    wcout << "\n  Enter text: ";
+    wcin >> szMsg;
+
+    //Создаем именованный объект проецируемого файла
+    hMapFile = CreateFileMapping(
+        INVALID_HANDLE_VALUE,    // использование файла подкачки
+        NULL,                    // защита по умолчанию 
+        PAGE_READWRITE,          // доступ к чтению/записи
+        0,                       // макс. размер объекта 
+        BUF_SIZE,                // размер буфера  
+        szName);                 // имя отраженного в памяти объекта
+
+    if (hMapFile == NULL || hMapFile == INVALID_HANDLE_VALUE){
+        printf("  It is not possible to create a memory-reflected object! (%d).\n",
+            GetLastError());
+        return 0;
+    }
+
+    pBuf = (TCHAR*)MapViewOfFile(hMapFile,   // дескриптор  отраженного в памяти объекта
+        FILE_MAP_ALL_ACCESS, // разрешение чтения/записи
+        0, // старшее DWORD смещения
+        0, // младшее DWORD смещения
+        BUF_SIZE); //число отображаемых байтов
+
+    if (pBuf == NULL){
+        printf("  The projected file cannot be displayed! (%d).\n",
+            GetLastError());
+        return 0;
+    }
+
+    SIZE_T size1 = GetFileSize(hMapFile, NULL);
+    /*
+    HANDLE hFile,           // дескриптор файла
+    LPDWORD lpFileSizeHigh  // старшее слово размера файла
+    */
+    cout << "  File size: " << size1 << "\n\n ";
+    MyCopyMemory(pBuf, szMsg, COPY_SIZE * sizeof(TCHAR), BUF_SIZE * sizeof(TCHAR));
+    /*
+    pBuf - начальный адрес
+    szMsg -  сообщение
+    */
+    _getch();
+
+    UnmapViewOfFile(pBuf); // начальный адрес
+    /*
+    Указатель на базовый адрес отображаемого представления файла, отображение которого должно быть прекращено.
+    */
+
+    CloseHandle(hMapFile);
+
+	return 0;
+}
