@@ -1,0 +1,237 @@
+// Вторая часть
+#include <iostream>
+#include <windows.h>
+#include <tchar.h>
+#include <map>
+#include <string> 
+using namespace std;
+
+int callback = 0;
+int operations;
+int sizeToCopy;
+
+HANDLE firstHandle;
+HANDLE secondHandle;
+
+OVERLAPPED* over_1;
+OVERLAPPED* over_2;
+
+// Завершении операции ввода-вывода
+VOID CALLBACK FileIOCompletionRoutine(DWORD dwErrorCode, DWORD dwNumberOfBytesTransfered, LPOVERLAPPED lpOverlapped) {
+    // Вызовы
+    callback++;
+}
+
+//Копирование файла
+void copyFile(HANDLE firstHandle, HANDLE secondHandle, DWORD blockSize, int operationsCount, long long fileSize) {
+    int currOperations = 0;
+    char** buffer;
+
+    buffer = new char* [operationsCount];
+    cout <<"buffer: " <<buffer << endl;
+
+    for (int i = 0; i < operationsCount; i++) {
+        buffer[i] = new char[blockSize];
+        cout << "buffer[i]: " << buffer[i] << ", ";
+    }
+    over_1 = new OVERLAPPED[operationsCount];
+    over_2 = new OVERLAPPED[operationsCount];
+
+    LARGE_INTEGER shiftRead;
+    LARGE_INTEGER shiftWrite;
+    shiftRead.QuadPart = 0;
+    shiftWrite.QuadPart = 0;
+
+    for (int i = 0; i < operationsCount; i++){
+        over_1[i].Offset = 0;
+        over_1[i].OffsetHigh = 0;
+        over_1[i].hEvent = NULL;
+
+        over_2[i].Offset = 0;
+        over_2[i].OffsetHigh = 0;
+        over_2[i].hEvent = NULL;
+    }
+
+    bool inFlag = false;
+    bool outFlag = false;
+
+    do{
+        callback = 0;
+        currOperations = 0;
+
+        for (int i = 0; i < operationsCount; i++){
+            if (fileSize > 0){
+                currOperations++;
+
+                if (inFlag) {
+                    cout <<endl << "[InFLAG==TRUE] " << endl;
+                    shiftRead.QuadPart += blockSize;
+                    for (int j = 0; j < operationsCount; j++) {
+                        over_1[j].Offset = shiftRead.LowPart;
+                        over_1[j].OffsetHigh = shiftRead.HighPart;
+
+                        cout  << "over_1[j].Offset =  " << over_1[j].Offset  << endl;
+                        cout << "over_1[j].OffsetHigh =  " << over_1[j].OffsetHigh << endl;
+                    }
+                }
+
+                inFlag = true;
+
+                ReadFileEx(firstHandle, buffer[i], blockSize, &over_1[i], FileIOCompletionRoutine);
+                /*
+                HANDLE hFile,                        // дескриптор файла
+                LPVOID lpBuffer,                     // буфер данных
+                DWORD nNumberOfBytesToRead,          // число читаемых байтов
+                LPOVERLAPPED lpOverlapped,           // смещение
+                LPOVERLAPPED_COMPLETION_ROUTINE 
+                lpCompletionRoutine            // процедура завершения
+                */
+
+                fileSize -= blockSize;
+            }
+        }
+
+        while (callback < currOperations) {
+            // Приостонавливаем выполнение потока до события ввода/вывода
+            // -1 запрещаем планировать поток
+            cout << "Приостонавливаем выполнение потока до события ввода/вывода" <<endl;
+            SleepEx(-1, TRUE);
+        }
+
+        callback = 0;
+
+        for (int i = 0; i < currOperations; i++){
+            if (outFlag) {
+                cout << endl << "[OutFLAG==TRUE] " << endl;
+                shiftWrite.QuadPart += blockSize;
+                for (int j = 0; j < operationsCount; j++) {
+                    over_2[j].Offset = shiftWrite.LowPart;
+                    over_2[j].OffsetHigh = shiftWrite.HighPart;
+
+                    cout << "over_2[j].Offset =  " << over_2[j].Offset << endl;
+                    cout << "over_2[j].OffsetHigh =  " << over_2[j].OffsetHigh << endl;
+                }
+            }
+            outFlag = true;
+            WriteFileEx(secondHandle, buffer[i], blockSize, &over_2[i], FileIOCompletionRoutine);
+            /*
+            HANDLE hFile,                      // дескриптор файла вывода
+            LPCVOID lpBuffer,                  // буфер данных
+            DWORD nNumberOfBytesToWrite,       // число байтов для записи
+            LPOVERLAPPED lpOverlapped,         // асинхронный буфер
+            LPOVERLAPPED_COMPLETION_ROUTINE
+            lpCompletionRoutine    // процедура завершения
+            */
+        }
+
+        while (callback < currOperations) {
+            cout << "Приостонавливаем выполнение потока до события ввода/вывода" << endl;
+            SleepEx(-1, TRUE);
+        }
+    } while (fileSize > 0);
+
+    //Очищаем буфер
+    for (int i = 0; i < operationsCount; i++)
+        delete[] buffer[i];
+
+    delete[] buffer;
+}
+
+
+
+int main(){
+    setlocale(LC_ALL, "Russian");
+    int number = 0;
+    int part = 0,  operations = 0;
+    const DWORD directoryBufferSize = MAX_PATH;
+    wchar_t  directoryBuffer[directoryBufferSize];
+
+    const DWORD direcOut = GetCurrentDirectory(directoryBufferSize, directoryBuffer);
+
+    LARGE_INTEGER fileSizeStruct;
+    long long fileSize;
+    wchar_t firstFileName[100];
+    wchar_t secondFileName[100];
+
+    if (direcOut > 0 && direcOut <= directoryBufferSize){
+        cout << "Enter size of the block:\n";
+        cout << "> 4096*";
+
+        do {
+            cin >> part;
+        } while (part == 0);
+
+        cout << "Enter number of the operations:\n1     2     4     8     12     16     \n";
+        cout << "> ";
+
+        do {
+            cin >> operations;
+        } while (operations == 0);
+
+        cout << "Enter the directory of first file with him name:" << endl;
+        wcin >> firstFileName;
+        cout << "Enter the directory of second file with him name:" << endl;
+        wcin >> secondFileName;
+
+        if (wcslen(firstFileName) < MAX_PATH){
+            firstHandle = CreateFile(firstFileName, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
+            /*
+            LPCTSTR lpFileName, // pointer to name of the file
+            DWORD dwDesiredAccess, // access (read-write) mode
+            DWORD dwShareMode, // share mode
+            LPSECURITY_ATTRIBUTES lpSecurityAttributes, pointer to security descriptor
+            DWORD dwCreationDistribution,// how to create
+            DWORD dwFlagsAndAttributes, // file attributes
+            HANDLE hTemplateFile // handle to file with attributes to copy 
+            */
+
+            secondHandle = CreateFile(secondFileName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, NULL);
+
+            if (firstHandle != INVALID_HANDLE_VALUE){
+                sizeToCopy = 4096 * part;
+                GetFileSizeEx(firstHandle, &fileSizeStruct);
+                /*
+                [in]  HANDLE         hFile, - дескриптор файла
+                [out] PLARGE_INTEGER lpFileSize - Указатель на структуру LARGE_INTEGER, которая получает размер файла в байтах.
+                */
+                fileSize = fileSizeStruct.QuadPart;
+
+                //Старт счетчика времени и копирования
+                DWORD startTime = GetTickCount();
+
+                copyFile(firstHandle, secondHandle, sizeToCopy, operations, fileSize);
+
+                SetFilePointerEx(secondHandle, fileSizeStruct, NULL, FILE_BEGIN); //Перемещает указатель указанного файла.
+                /*
+                 [in]            HANDLE         hFile,  - дескриптор файла
+                 [in]            LARGE_INTEGER  liDistanceToMov,        - Количество байтов для перемещения указателя файла. 
+                                                                                                        Положительное значение перемещает указатель вперед в файле, 
+                                                                                                        а отрицательное значение перемещает указатель файла назад.
+
+                [out, optional] PLARGE_INTEGER lpNewFilePointer, - Указатель на переменную для получения указателя нового файла. 
+                                                                                                          Если этот параметр равен NULL , новый указатель файла не возвращается.
+                [in]            DWORD          dwMoveMethod - Начальная точка перемещения указателя файла
+                */
+                SetEndOfFile(secondHandle); //перемещает  позицию метки конца файла (EOF) для заданного файла к текущую позицию его указателя.
+
+                DWORD endTime = GetTickCount();
+
+                cout << endl << "Time to copy: " << endTime - startTime << endl;
+
+                delete[] over_1, over_2;
+            }
+            else {
+                if (GetLastError())
+                    cout << endl << "ERROR: " << GetLastError() << endl;
+            }
+        }
+
+        if (!CloseHandle(firstHandle))
+            cout << "ERROR: Could not close the handle!" << endl;
+        if (!CloseHandle(secondHandle))
+            cout << "ERROR: Could not close the handle!" << endl;
+    }
+    else {
+        cout << "ERROR: Long name";
+    }
+}
