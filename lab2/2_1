@@ -1,0 +1,375 @@
+#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <conio.h>
+#include <iostream>
+
+#define DIV 1024
+#define WIDTH 7
+DWORD dwPageSize, pagelimit;
+LPVOID lpvBase;
+SYSTEM_INFO siSysInfo;
+int choose;
+
+using namespace std;
+
+//#1
+void getSysInfo() {
+	GetSystemInfo(&siSysInfo);
+	/*
+	// получаем размер страниц на данной процессорной платформе
+	*/
+
+	printf(" Processor architecture: \n");
+	if (siSysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64)
+		printf("  x64 (AMD or INTEL)\n");
+	if (siSysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_IA64)
+		printf("  Intel Itanium Processor Family (IPF)\n");
+	if (siSysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
+		printf("  x86\n");
+	if (siSysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM)
+		printf("  ARM\n");
+	if (siSysInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_UNKNOWN)
+		printf("  Unknown architecture\n");
+
+
+	printf("\n Hardware information: \n");
+	printf("  OEM ID: %u\n", siSysInfo.dwOemId);
+	printf("  Number of processors: %u\n", siSysInfo.dwNumberOfProcessors);
+	printf("  Page size: %u\n", siSysInfo.dwPageSize);
+	printf("  Processor type: %u\n", siSysInfo.dwProcessorType);
+	printf("  Minimum application address: %p\n", siSysInfo.lpMinimumApplicationAddress);
+	printf("  Maximum application address: %p\n", siSysInfo.lpMaximumApplicationAddress);
+	printf("  Active processor mask: %u\n", siSysInfo.dwActiveProcessorMask);
+
+	printf(" ___________________________________________________\n");
+}
+
+//#2
+void globalMemStatus() {
+	MEMORYSTATUS stat;
+	GlobalMemoryStatus(&stat);
+	/*
+	определение статуса виртуальной памяти
+	*/
+
+	printf("  The MemoryStatus structure is %ld bytes long.\n", stat.dwLength);
+	printf("  It should be %d.\n", sizeof(stat));
+	printf("\n  %ld %% of memory is in use.\n", stat.dwMemoryLoad);
+	printf("  There are %*ld total %sbytes of physical memory.\n", WIDTH, stat.dwTotalPhys / DIV, "K");
+	printf("  There are %*ld free %sbytes of physical memory.\n", WIDTH, stat.dwAvailPhys / DIV, "K");
+	printf("  There are %*ld total %sbytes of paging file.\n", WIDTH, stat.dwTotalPageFile / DIV, "K");
+	printf("  There are %*ld free %sbytes of paging file.\n", WIDTH, stat.dwAvailPageFile / DIV, "K");
+	printf("  There are %*lx total %sbytes of virtual memory.\n", WIDTH, stat.dwTotalVirtual / DIV, "K");
+	printf("  There are %*lx free %sbytes of virtual memory.\n", WIDTH, stat.dwAvailVirtual / DIV, "K");
+	printf("  Free user bytes: %u\n", stat.dwAvailVirtual);
+
+	printf(" ___________________________________________________\n");
+}
+
+void checkProtect(DWORD level){
+	switch (level){
+	case 0:
+		cout << "    >>Lack of access" << endl;
+		break;
+	case PAGE_EXECUTE:
+		cout << "    >>Enabled access to the fixed area of the pages (PAGE_EXECUTE)" << endl;
+		break;
+	case PAGE_EXECUTE_READ:
+		cout << "    >>Enabled access only for execution or reading to a fixed area of pages. " << endl;
+		cout << "         Attempting to write to a fixed region leads to a violation of access (PAGE_EXECUTE_READ)" << endl;
+		break;
+	case PAGE_EXECUTE_READWRITE:
+		cout << "    >>Enabled access only for execution, read or read / write to the fixed area of pages (PAGE_EXECUTE_READWRITE)" << endl;
+		break;
+	case PAGE_EXECUTE_WRITECOPY:
+		cout << "    >>Includes access only for execution, read or copy when recording to a mapped file mapping object (PAGE_EXECUTE_WRITECOPY)" << endl;
+		break;
+	case PAGE_NOACCESS:
+		cout << "    >>Disabled all access to the fixed area of the pages (PAGE_NOACCESS)" << endl;
+		break;
+	case PAGE_READONLY:
+		cout << "    >>Enabled read-only access to a fixed area of pages (PAGE_READONLY)" << endl;
+		break;
+	case PAGE_READWRITE:
+		cout << "    >>Includes reading or reading / writing access to a fixed area of pages (PAGE_READWRITE)" << endl;
+		break;
+	case PAGE_WRITECOPY:
+		cout << "    >>Includes read-only reading or copying when recording to mapped view of file mapping object (PAGE_WRITECOPY)" << endl;
+		break;
+	}
+
+	if ((level & PAGE_GUARD) != 0)
+		cout << "    >>Pages in the region are protected (PAGE_GUARD)" << endl;
+
+	if ((level & PAGE_NOCACHE) != 0)
+		cout << "    >>Pages are not cached (PAGE_NOCACHE)" << endl;
+
+	if ((level & PAGE_WRITECOMBINE) != 0)
+		cout << "    >>Pages are installed in the Combined Record mode (PAGE_WRITECOMBINE)" << endl;
+}
+
+void pagesize(){
+	GetSystemInfo(&siSysInfo);
+	dwPageSize = siSysInfo.dwPageSize;
+}
+//#3
+void virtQuery() {
+	DWORD dwMemSize;
+	MEMORY_BASIC_INFORMATION meminfo;
+
+	LPCVOID mem = (LPCVOID)0x00010000;
+	int offset = 4096 * 10;
+	int address;
+	SIZE_T x;
+
+	cout << "  Choose one of the items" << endl;
+	cout << "   1. Information about the selected address" << endl;
+	cout << "   2. Information about all addresses" << endl;
+
+	cin >> choose;
+
+	switch (choose) {
+	case 1:
+		cout << "  Enter the desired address: 0x";
+		cin >> hex >> address;
+
+		x = VirtualQuery((LPCVOID)address, &meminfo, 256); // адрес области, информационного буфера, размер буфера
+		/*
+		позволяют определить статус
+		указанного региона адресов. 
+
+		LPCVOID lpAddress, // address of region
+		PMEMORY_BASIC_INFORMATION lpBuffer, // address of information buffer
+		DWORD dwLength // size of buffer
+		*/
+		cout << "  Pointer to the basic address of the region of the page: " << meminfo.BaseAddress << endl;
+		cout << "  Pointer to the basic address of the range of pages allocated by the user: " << meminfo.AllocationBase << endl;
+		cout << "  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - " << endl;
+
+		cout << "  Memory Protection Option at the initial allocation of the area: " << endl;
+		checkProtect(meminfo.AllocationProtect);
+
+		cout << "  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - " << endl;
+		cout << "  The size of the region starting with the basic address in which all pages have the same attributes: " << meminfo.RegionSize << " bytes" << endl;
+		cout << "  Protection of access to pages in the area: " << meminfo.RegionSize << endl;
+
+		cout << "  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - " << endl;
+		cout << "  Page status in the region" << endl;
+
+		if (meminfo.State == MEM_COMMIT)
+			cout << "    >>Fixed page." << endl;
+		if (meminfo.State == MEM_FREE)
+			cout << "    >>Free pages inaccessible to the causing process and available for allocation." << endl;
+		if (meminfo.State == MEM_RESERVE)
+			cout << "    >>Reserved pages on which the range of virtual address space of the process is reserved without the selection of any physical storage" << endl;
+		cout << "  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - " << endl;
+
+		cout << "  Protection of access to the pages in the region" << endl;
+		if (meminfo.Type == MEM_IMAGE)
+			cout << "    >>Memory Pages within the region are displayed as a section of the image." << endl;
+		if (meminfo.Type == MEM_MAPPED)
+			cout << "    >>Memory Pages within the region are compared with the section representation." << endl;
+		if (meminfo.Type == MEM_PRIVATE)
+			cout << "    >>Memory Pages within the region are private." << endl;
+
+		cout << "  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - " << endl;
+
+		break;
+
+	case 2:
+		cout << "  - - START SCAN - - " << endl;
+
+		while (VirtualQuery(mem, &meminfo, 256)) {
+			cout << "    [" << mem << "]" << ' ';
+			switch (meminfo.State) {
+			case MEM_COMMIT:
+				cout << "  MEM_COMMIT!\n";
+				break;
+			case MEM_FREE:
+				cout << "  MEM_FREE!\n";
+				break;
+			case MEM_RESERVE:
+				cout << "  MEM_RESERVE!\n";
+				break;
+			default:
+				cout << "  ERROR!\n";
+				break;
+			}
+			mem = (LPCVOID)((int)mem + offset);
+		}
+		cout << "  - - END SCAN - - " << endl;
+
+		break;
+	}
+}
+
+//#4
+void virtAlloc() {
+	LPVOID BasicAddr = NULL;
+	LPVOID BasicAddr1 = NULL;
+
+	BasicAddr = VirtualAlloc(NULL, siSysInfo.dwPageSize, MEM_RESERVE, PAGE_EXECUTE_READWRITE); 
+	// адрес для резервирования или выделения памяти, размер выделяемого регионa, тип распределения памяти, тип защиты доступа
+	/*
+	резервирование региона в автоматическом режиме и в режиме ввода адреса начала региона.
+
+	*/
+
+	if (BasicAddr != NULL) {
+		cout << "  Automatic reservation successfully! \n    >>Basic address of the region: " << BasicAddr << endl;
+		cout << "  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - " << endl;
+		cout << endl << "  Reservation in the input mode of the beginning of the region" << endl;
+		cout << "  Enter the address: 0x";
+		cin >> BasicAddr1;
+
+		BasicAddr = VirtualAlloc(BasicAddr1, siSysInfo.dwPageSize, MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+		cout << "  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - " << endl;
+		if (BasicAddr != NULL)
+			cout << "    >>Reservation successfully! Basic address of the region " << BasicAddr << endl;
+		else
+			cout << "    >>Reservation ERROR!" << endl;
+	}
+	else
+		cout << "  Reservation ERROR! Abort..." << endl;
+}
+
+//#5
+void virtProtect() {
+	LPVOID address = NULL;
+
+	int inputLevel;
+
+	DWORD oldLevel = 0, newLevel = 0;
+
+	cout << "  Enter the address: 0x";
+	cin >> address;
+
+	if (address != NULL){
+		cout << "  Choose one of the items:" << endl;
+		cout << "    1. PAGE_EXECUTE" << endl;
+		cout << "    2. PAGE_EXECUTE_READ" << endl;
+		cout << "    3. PAGE_EXECUTE_READWRITE" << endl;
+		cout << "    4. PAGE_EXECUTE_WRITECOPY" << endl;
+		cout << "    5. PAGE_NOACCESS" << endl;
+		cout << "    6. PAGE_READONLY" << endl;
+		cout << "    7. PAGE_READWRITE" << endl;
+		cout << "    8. PAGE_WRITECOPY" << endl;
+		cout << "    9. PAGE_TARGETS_INVALID" << endl;
+		cin >> inputLevel;
+
+		switch (inputLevel){
+		case 1:
+			newLevel = PAGE_EXECUTE;
+			break;
+		case 2:
+			newLevel = PAGE_EXECUTE_READ;
+			break;
+		case 3:
+			newLevel = PAGE_EXECUTE_READWRITE;
+			break;
+		case 4:
+			newLevel = PAGE_EXECUTE_WRITECOPY;
+			break;
+		case 5:
+			newLevel = PAGE_NOACCESS;
+			break;
+		case 6:
+			newLevel = PAGE_READONLY;
+			break;
+		case 7:
+			newLevel = PAGE_READWRITE;
+			break;
+		case 8:
+			newLevel = PAGE_WRITECOPY;
+			break;
+		}
+
+		cout << "    >>New level of protection: ";
+		checkProtect(newLevel);
+		cout << endl;
+
+		if (VirtualProtect((LPVOID)address, sizeof(DWORD), newLevel, &oldLevel)){ 
+			//адрес региона для установки флага, размер региона,  флаги защиты,  адрес для сохранения прежних флагов
+			cout << "  Old level protection:" << endl;
+			checkProtect(oldLevel);
+		}
+		/*
+		установка защиты доступа для заданного (с клавиатуры) региона памяти и ее проверка.
+		*/
+		else
+			cout << "  ERROR! " << GetLastError() << endl;
+	}
+	else
+		cout << "  NULL Address!" << endl;
+}
+
+//#6
+void virtFree(){
+	LPVOID address = NULL;
+	BOOL bl = FALSE;
+	cout << "  Enter the address to return physical memory and liberation of the region of address space." <<endl;
+	cout << "  0x";
+	cin >> address;
+	bl = VirtualFree(address, 0, MEM_RELEASE);  //адрес освобождаемого региона,  размер освобождаемого региона, тип освобождения 
+	/*
+	возврат физической памяти и освобождение региона адресного
+	пространства заданного региона памяти.
+
+	*/
+
+	if (bl)
+		cout << "    >>The region has been successfully released" << endl;
+	else
+		cerr << "    >>ERROR! " << GetLastError();
+}
+
+
+int main() {
+	int option;
+
+	do {
+		cout << "  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - " << endl;
+
+		cout << "  1. Get System Info\n  2. Global Memory Status\n  3. Virtual Query\n  4. Virtual Alloc\n  5. Virtual Protect\n  6. Virtual Free\n";
+		cout << "  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - \n  0. EXIT\n\n  Choose option: ";
+
+		cin >> option;
+		system("CLS");
+
+		switch (option) {
+		case 1:
+			cout << endl << "  -- Get System Info --\n\n";
+			getSysInfo();
+			break;
+		case 2:
+			cout << endl << "  -- Global Memory Status --\n\n";
+			globalMemStatus();
+			break;
+		case 3:
+			cout << endl << "  -- Virtual Query --\n\n"; //Virtual Free
+			virtQuery();
+			break;
+		case 4:
+			cout << endl << "  -- Virtual Alloc --\n\n";
+			virtAlloc();
+			break;
+		case 5:
+			cout << endl << "  -- Virtual Protect --\n\n";
+			virtProtect();
+			break;
+		case 6:
+			cout << endl << "  -- Virtual Free --\n\n";
+			virtFree();
+			break;
+		}
+
+		cout << "\nPress anything...";
+		_getch();
+		system("CLS");
+	} while (option != 0);
+
+	return 0;
+}
