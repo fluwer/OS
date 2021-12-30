@@ -1,0 +1,222 @@
+#define _MT
+#include <windows.h>
+#include <iostream>
+#include <iomanip>
+#include <omp.h>
+#include <AclAPI.h>
+#include <AccCtrl.h>
+
+using namespace std;
+
+typedef struct _Thread {
+	HANDLE hThread;
+	volatile unsigned int nextBlockIndex;
+	double threadPi;
+	volatile bool finished;
+	volatile bool calculating;
+} Thread;
+
+const int BLOCK_SIZE = 10 * 500;
+const int N = 100000000;
+const int TOTAL_BLOCKS = N / BLOCK_SIZE + (N % BLOCK_SIZE ? 1 : 0);
+Thread* pThreads;
+
+int menu();
+void win32Process();
+DWORD WINAPI routine(LPVOID);
+double OMP();
+__declspec(thread) DWORD dwTlsThreadIndex; //локальная для потока
+
+int main(){
+	setlocale(0, ".1251");
+	int checkMenu;
+
+	switch (checkMenu = menu()){
+	case 1:
+		win32Process();
+		break;
+	case 2:
+		OMP();
+		break;
+	case 0:
+		break;
+	default:
+		if (checkMenu)
+			cout << "Error" << endl;
+	}
+
+	system("pause");
+	return 0;
+}
+
+int menu(){
+	system("cls");
+	int checkPoint;
+
+	do {
+		cin.clear();
+		cin.sync();
+
+		cout << "Select Method:" << endl;
+		cout << "1 - Win32 API" << endl;
+		cout << "2 - Open Multi-Proce	ssing (OMP)" << endl;
+		cout << "0 - Exit" << endl;
+		cout << ">";
+		cin >> checkPoint;
+		if (cin.fail())
+			cout << "Error! Please Retry" << endl;
+	} while (cin.fail());
+	
+	system("cls");
+	return checkPoint;
+}
+
+volatile LONG nextBlock = 0;
+int numOfThreads = 1;
+int* iterationPerThread;
+
+void win32Process() {
+	srand(time(NULL)); //Генерируем случайное число, используя текущею дату
+	double pi = 0,  //Pi
+				 start = 0, //счетчик начала таймера
+				 end = 0; //счетчик конца таймера
+
+	cout << "Всего блоков: " << TOTAL_BLOCKS << "\n";
+	cout << "Потоков : ";
+	cin >> numOfThreads;
+	iterationPerThread = new int[numOfThreads];
+
+	pThreads = new Thread[numOfThreads];
+
+	for (int i = 0; i < numOfThreads; ++i) {
+		iterationPerThread[i] = 0;
+		pThreads[i].nextBlockIndex = nextBlock++;
+		pThreads[i].threadPi = 0;	
+		pThreads[i].finished = false;
+		pThreads[i].calculating = false;
+
+		pThreads[i].hThread = CreateThread(NULL, 0, routine, (LPVOID)i, CREATE_SUSPENDED, NULL); 
+		//атрибуты защиты потока, размер начального стека, адрес функции потока, 
+		//аргументы для вызова функции потока, параметры создания потока, идентификатор потока
+	}
+	HANDLE* handlesArray = new HANDLE[numOfThreads]; //объекты синхронизации
+
+	for (int i = 0; i < numOfThreads; ++i)
+		handlesArray[i] = pThreads[i].hThread;
+
+	start = GetTickCount(); //извлекаем число миллисекунд, которые истекли с тех пор как система была запущена
+	for (int i = 0; i < numOfThreads; i++)
+		ResumeThread(pThreads[i].hThread); // дескриптор потока
+		//уменьшаем счет времени приостановки работы потока
+
+	while (nextBlock <= TOTAL_BLOCKS) {
+		int i;
+		for (i = rand() % numOfThreads; ; i = (i + 1) % numOfThreads) {
+			SwitchToThread();
+			//заставляем вызывающий поток передать выполнение другому потоку, 
+			//который является готовым запуститься на текущем процессоре.
+			if (!pThreads[i].calculating || nextBlock > TOTAL_BLOCKS)
+				break;
+		}
+
+		ResumeThread(pThreads[i].hThread);
+	}
+	cout << nextBlock << endl;
+
+	for (int i = 0; i < numOfThreads; i++)
+		ResumeThread(pThreads[i].hThread);
+
+	DWORD check = WaitForMultipleObjects(numOfThreads, handlesArray, true, INFINITE);
+	//количество интересующих объектов ядра, указатель на массив дескрипторов объектов синхронизации, 
+	//флаг, который указывает режим ожидания всех заданных объектов ядра(TRUE)
+	/*
+	ждать освобождения сразу нескольких объектов или какого-то
+	одного из списка объектов
+	*/
+
+	end = GetTickCount();
+	for (int i = 0; i < numOfThreads; ++i)
+		pi += pThreads[i].threadPi;
+
+	pi /= N;
+	cout << setprecision(70) << "Pi = " << pi << endl;
+	cout << "Time: " << (end - start) << " мс" << endl;
+
+	for (int i = 0; i < numOfThreads; ++i)
+		CloseHandle(pThreads[i].hThread);
+}
+
+DWORD WINAPI routine(LPVOID lpParameter) {
+	dwTlsThreadIndex = (DWORD)lpParameter;
+	pThreads[dwTlsThreadIndex].calculating = true;
+	unsigned long int beginIndex = 0;
+	unsigned long int endIndex = 0;
+
+	while (nextBlock <= TOTAL_BLOCKS) {
+		double intermediatePi = 0;
+		beginIndex = pThreads[dwTlsThreadIndex].nextBlockIndex * BLOCK_SIZE;
+		endIndex = (pThreads[dwTlsThreadIndex].nextBlockIndex + 1) * BLOCK_SIZE;
+		if (endIndex > N)
+			endIndex = N;
+
+		for (unsigned long int i = beginIndex; i < endIndex; i++) {
+			double xi = (i + 0.5) / N;
+			intermediatePi += 4 / (1 + xi * xi);
+		}
+
+		pThreads[dwTlsThreadIndex].threadPi += intermediatePi;
+		pThreads[dwTlsThreadIndex].calculating = false;
+
+		SuspendThread(pThreads[dwTlsThreadIndex].hThread);
+		//приостанавливаем работу заданного потока
+		pThreads[dwTlsThreadIndex].nextBlockIndex = InterlockedExchangeAdd(&nextBlock, 1);
+		/*
+		 [in, out] LONG volatile *Addend, -  Указатель на переменную. Значение этой переменной будет заменено результатом операции.
+		 [in]      LONG          Value - Значение, добавляемое к переменной, на которую указывает параметр Addend .
+		*/
+		pThreads[dwTlsThreadIndex].calculating = true;
+	}
+
+	pThreads[dwTlsThreadIndex].finished = true;
+	return 0;
+}
+
+double OMP() {
+	int maxThreads;
+
+	cout << "Максимальное количество потоков: ";
+	cin >> maxThreads;
+
+	omp_set_dynamic(0); //динамическая корректировка отключена
+	omp_set_num_threads(maxThreads);
+	double start = GetTickCount(); //извлекаем число миллисекунд, которые истекли с тех пор как система была запущена
+	double pi = 0;
+
+/*
+при выполнении цикла for
+в параллельном регионе итерации
+цикла должны быть распределены
+между потоками группы.
+
+достигнув конца региона, все потоки
+блокируются до тех пор, пока
+последний поток не завершит свою
+работу.
+
+reduction - переменные, являющиеся частными для каждого потока, являются 
+субъектом операции сокращения в конце параллельной области.
+Динамический алгоритм планирования =>
+*/
+#pragma omp parallel for schedule(dynamic, BLOCK_SIZE) reduction(+:pi)
+	for (int i = 0; i < N; i++) {
+		double xi = (i + 0.5) / N;
+		pi += 4 / (1 + xi * xi);
+	}
+	double end = GetTickCount();
+
+	pi /= N;
+	cout << setprecision(70) << "Pi = " << pi << endl;
+	cout << "Time: " << (end - start) << " мс" << endl;
+
+	return pi;
+}
